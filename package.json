@@ -1,0 +1,28 @@
+{
+  "name": "gmail-discord-bot",
+  "version": "1.0.0",
+  "description": "Gmail 메일을 읽어서 Discord 웹훅으로 전달하는 봇",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "setup": "node setup.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "googleapis": "^128.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "gmail",
+    "discord",
+    "webhook",
+    "express",
+    "oauth2"
+  ],
+  "author": "",
+  "license": "MIT"
+}
