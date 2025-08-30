@@ -1,0 +1,52 @@
+# 의존성
+node_modules
+npm-debug.log*
+
+# 환경 변수
+.env
+.env.local
+.env.*.local
+
+# 로그 파일
+logs
+*.log
+
+# 런타임 데이터
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 커버리지 디렉토리
+coverage
+.nyc_output
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# 문서
+README.md
+*.md
+
+# 테스트
+test
+tests
+__tests__
+*.test.js
+*.spec.js
