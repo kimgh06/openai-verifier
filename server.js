@@ -1,6 +1,5 @@
 const express = require("express");
 const { google } = require("googleapis");
-const readline = require("readline");
 require("dotenv").config();
 
 const app = express();
@@ -9,12 +8,6 @@ const PORT = process.env.PORT || 3000;
 // Gmail API OAuth2 설정
 let oauth2Client = null;
 let gmail = null;
-
-// 터미널 입력을 위한 readline 인터페이스
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
 
 // 시간이 포함된 로그 함수
 function logWithTime(message, type = "info") {
@@ -41,182 +34,182 @@ function logWithTime(message, type = "info") {
   console.log(`[${timestamp}] ${emoji[type] || emoji.info} ${message}`);
 }
 
-// OAuth2 클라이언트 초기화 함수
-function initializeOAuth2() {
+// 환경 변수 검증 함수
+function validateEnvironmentVariables() {
   const clientId = process.env.GMAIL_CLIENT_ID;
   const clientSecret = process.env.GMAIL_CLIENT_SECRET;
-  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret) {
     logWithTime(
-      "GMAIL_CLIENT_ID와 GMAIL_CLIENT_SECRET이 설정되지 않았습니다.",
+      "GMAIL_CLIENT_ID 또는 GMAIL_CLIENT_SECRET이 설정되지 않았습니다.",
       "error"
     );
     return false;
   }
 
-  if (!refreshToken) {
-    logWithTime("GMAIL_REFRESH_TOKEN이 설정되지 않았습니다.", "error");
-    return false;
-  }
-
-  try {
-    oauth2Client = new google.auth.OAuth2(
-      clientId,
-      clientSecret,
-      "https://developers.google.com/oauthplayground"
-    );
-
-    oauth2Client.setCredentials({
-      refresh_token: refreshToken,
-    });
-
-    gmail = google.gmail({ version: "v1", auth: oauth2Client });
-    logWithTime("OAuth2 클라이언트가 초기화되었습니다.", "success");
-    return true;
-  } catch (error) {
-    logWithTime(`OAuth2 클라이언트 초기화 실패: ${error.message}`, "error");
-    return false;
-  }
+  return { clientId, clientSecret };
 }
 
-// 터미널에서 OAuth2 설정 진행
-async function setupOAuth2Terminal() {
-  const clientId = process.env.GMAIL_CLIENT_ID;
-  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+// OAuth2 클라이언트 생성 함수
+function createOAuth2Client(clientId, clientSecret) {
+  return new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    "https://developers.google.com/oauthplayground"
+  );
+}
 
-  if (!clientId || !clientSecret) {
-    logWithTime("OAuth2 설정이 필요합니다:", "warning");
-    logWithTime(
-      "1. .env 파일에 GMAIL_CLIENT_ID와 GMAIL_CLIENT_SECRET을 추가하세요",
-      "info"
-    );
-    logWithTime(
-      "2. 서버를 재시작하면 자동으로 OAuth2 설정을 진행합니다",
-      "info"
-    );
-    return false;
-  }
+// 인증 URL 생성 함수
+function generateAuthUrl(oauth2Client) {
+  return oauth2Client.generateAuthUrl({
+    access_type: "offline",
+    scope: ["https://www.googleapis.com/auth/gmail.modify"],
+    prompt: "consent",
+  });
+}
+
+// 인증 안내 메시지 출력 함수
+function displayAuthInstructions(authUrl) {
+  logWithTime("다음 단계를 따라 Gmail API를 설정하세요:", "info");
+  logWithTime("1. 아래 URL을 브라우저에서 열기:", "info");
+  console.log(authUrl);
+  logWithTime("2. Google 계정으로 로그인하고 권한 허용", "info");
+  logWithTime("3. 인증 코드를 복사", "info");
+  logWithTime("4. 브라우저에서 http://localhost:3000/auth 입력", "info");
+  logWithTime("5. 인증 코드를 브라우저에 입력", "info");
+  logWithTime("또는 URL에 ?code=인증코드 형식으로 직접 접속 가능", "info");
+  logWithTime("예: http://localhost:3000/auth?code=4/0AfJohXn...", "info");
+  logWithTime("브라우저에서 인증 코드를 입력해주세요...", "info");
+  logWithTime("http://localhost:3000/auth 페이지를 열어주세요", "info");
+}
+
+// OAuth2 설정 진행
+async function setupOAuth2() {
+  const envVars = validateEnvironmentVariables();
+  if (!envVars) return false;
 
   try {
     logWithTime("Gmail API OAuth2 설정을 시작합니다...", "debug");
 
-    oauth2Client = new google.auth.OAuth2(
-      clientId,
-      clientSecret,
-      "https://developers.google.com/oauthplayground"
-    );
+    oauth2Client = createOAuth2Client(envVars.clientId, envVars.clientSecret);
+    const authUrl = generateAuthUrl(oauth2Client);
+    displayAuthInstructions(authUrl);
 
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: ["https://www.googleapis.com/auth/gmail.modify"],
-      prompt: "consent",
-    });
-
-    logWithTime("다음 단계를 따라 Gmail API를 설정하세요:", "info");
-    logWithTime("1. 아래 URL을 브라우저에서 열기:", "info");
-    console.log(authUrl);
-    logWithTime("2. Google 계정으로 로그인하고 권한 허용", "info");
-    logWithTime("3. 인증 코드를 복사", "info");
-    logWithTime("4. 아래에 인증 코드 입력", "info");
-
-    // 인증 코드 입력 받기
-    const authCode = await question("인증 코드를 입력하세요: ");
-
-    // 액세스 토큰과 리프레시 토큰 교환
-    const { tokens } = await oauth2Client.getToken(authCode);
-
-    logWithTime("인증이 완료되었습니다!", "success");
-    logWithTime(`리프레시 토큰: ${tokens.refresh_token}`, "info");
-    logWithTime(".env 파일에 다음을 추가하세요:", "info");
-    console.log(`GMAIL_REFRESH_TOKEN=${tokens.refresh_token}`);
-    console.log(`GMAIL_USER_EMAIL=your_email@gmail.com`);
-
-    // 테스트 연결
-    logWithTime("Gmail API 연결을 테스트합니다...", "debug");
-
-    oauth2Client.setCredentials({
-      refresh_token: tokens.refresh_token,
-    });
-
-    gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-    try {
-      const profile = await gmail.users.getProfile({ userId: "me" });
-      logWithTime("Gmail API 연결 성공!", "success");
-      logWithTime(`이메일 주소: ${profile.data.emailAddress}`, "info");
-      logWithTime("설정이 완료되었습니다!", "success");
-      logWithTime("이제 서버가 자동으로 메일을 확인하기 시작합니다.", "info");
-      return true;
-    } catch (error) {
-      logWithTime(`Gmail API 연결 실패: ${error.message}`, "error");
-      return false;
-    }
+    return await waitForBrowserAuth();
   } catch (error) {
     logWithTime(`OAuth2 설정 실패: ${error.message}`, "error");
     return false;
   }
 }
 
-// 터미널 질문 함수
-function question(query) {
-  return new Promise((resolve) => rl.question(query, resolve));
+// 브라우저 인증 대기 함수
+async function waitForBrowserAuth() {
+  return new Promise((resolve) => {
+    global.authCompleted = false;
+    global.authTokens = null;
+
+    const checkInterval = setInterval(() => {
+      if (global.authCompleted) {
+        clearInterval(checkInterval);
+        handleAuthCompletion(resolve);
+      }
+    }, 1000);
+
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      if (!global.authCompleted) {
+        logWithTime("인증 시간이 초과되었습니다. 다시 시도해주세요.", "error");
+        resolve(false);
+      }
+    }, 300000);
+  });
+}
+
+// 인증 완료 처리 함수
+function handleAuthCompletion(resolve) {
+  if (global.authTokens) {
+    logWithTime("브라우저를 통한 인증이 완료되었습니다!", "success");
+    testGmailConnection(global.authTokens.refresh_token).then((success) =>
+      resolve(success)
+    );
+  } else {
+    logWithTime("브라우저 인증에 실패했습니다.", "error");
+    resolve(false);
+  }
+}
+
+// Gmail 연결 테스트
+async function testGmailConnection(refreshToken) {
+  try {
+    logWithTime("Gmail API 연결을 테스트합니다...", "debug");
+
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+    const profile = await gmail.users.getProfile({ userId: "me" });
+    logWithTime("Gmail API 연결 성공!", "success");
+    logWithTime(`이메일 주소: ${profile.data.emailAddress}`, "info");
+    logWithTime("설정이 완료되었습니다!", "success");
+    logWithTime("이제 서버가 자동으로 메일을 확인하기 시작합니다.", "info");
+    return true;
+  } catch (error) {
+    logWithTime(`Gmail API 연결 실패: ${error.message}`, "error");
+    return false;
+  }
+}
+
+// OpenAI 이메일 필터링 함수
+function isOpenAIEmail(subject, body) {
+  const keywords = ["openai", "verification", "verify", "confirm"];
+
+  const subjectLower = subject.toLowerCase();
+  const bodyLower = body.toLowerCase();
+
+  return keywords.some(
+    (keyword) => subjectLower.includes(keyword) || bodyLower.includes(keyword)
+  );
+}
+
+// 인증 코드 패턴 매칭 함수
+function extractVerificationCodes(body) {
+  const patterns = [
+    { regex: /\b\d{6}\b/g, name: "6자리 숫자" },
+    { regex: /\b\d{4}\b/g, name: "4자리 숫자" },
+    { regex: /\b[A-Z]{2,4}\d{3,6}\b/g, name: "알파벳+숫자" },
+  ];
+
+  for (const pattern of patterns) {
+    const matches = body.match(pattern.regex);
+    if (matches && matches.length > 0) return matches[0];
+  }
+
+  return null;
 }
 
 // OpenAI 이메일 인증 코드 추출 함수
 function extractOpenAIVerificationCode(subject, body) {
-  // null/undefined 체크 추가
-  if (!subject || !body) {
-    return null;
-  }
+  if (!subject || !body) return null;
 
-  // OpenAI 관련 키워드 확인
-  const isOpenAIEmail =
-    subject.toLowerCase().includes("openai") ||
-    subject.toLowerCase().includes("verification") ||
-    subject.toLowerCase().includes("verify") ||
-    subject.toLowerCase().includes("confirm") ||
-    body.toLowerCase().includes("openai") ||
-    body.toLowerCase().includes("verification") ||
-    body.toLowerCase().includes("verify") ||
-    body.toLowerCase().includes("confirm");
+  if (!isOpenAIEmail(subject, body)) return null;
 
-  if (!isOpenAIEmail) return null;
-
-  // 인증 코드 패턴 찾기 (6자리 숫자)
-  const codePattern = /\b\d{6}\b/g;
-  const codes = body.match(codePattern);
-
-  // 4자리 숫자도 확인
-  const codePattern4 = /\b\d{4}\b/g;
-  const codes4 = body.match(codePattern4);
-
-  // 알파벳+숫자 조합 (예: ABC123)
-  const alphanumericPattern = /\b[A-Z]{2,4}\d{3,6}\b/g;
-  const alphanumericCodes = body.match(alphanumericPattern);
-
-  // 가장 긴 코드를 우선 선택 (더 구체적일 가능성)
-  let bestCode = null;
-
-  if (codes && codes.length > 0) {
-    bestCode = codes[0];
-  }
-
-  if (codes4 && codes4.length > 0) {
-    bestCode = codes4[0];
-  }
-
-  if (alphanumericCodes && alphanumericCodes.length > 0) {
-    bestCode = alphanumericCodes[0];
-  }
+  const code = extractVerificationCodes(body);
 
   return {
-    code: bestCode,
-    type: bestCode ? "verification_code" : "openai_email_no_code",
+    code,
+    type: code ? "verification_code" : "openai_email_no_code",
   };
 }
 
-// 메일 읽기 함수 (읽지 않은 OpenAI 이메일만 필터링)
+// Gmail 메시지 검색 함수
+async function searchUnreadOpenAIEmails() {
+  return await gmail.users.messages.list({
+    userId: "me",
+    maxResults: 20,
+    q: "is:unread AND (from:openai OR from:noreply@openai.com OR subject:verification OR subject:verify OR subject:confirm)",
+  });
+}
+
+// 메일 읽기 함수
 async function readOpenAIEmails() {
   if (!gmail) {
     logWithTime(
@@ -229,13 +222,7 @@ async function readOpenAIEmails() {
   try {
     logWithTime("읽지 않은 OpenAI 이메일 확인 중...", "debug");
 
-    // 읽지 않은 OpenAI 관련 이메일만 검색
-    const response = await gmail.users.messages.list({
-      userId: "me",
-      maxResults: 20,
-      q: "is:unread AND (from:openai OR from:noreply@openai.com OR subject:verification OR subject:verify OR subject:confirm)",
-    });
-
+    const response = await searchUnreadOpenAIEmails();
     const messages = response.data.messages;
 
     if (!messages || messages.length === 0) {
@@ -248,7 +235,6 @@ async function readOpenAIEmails() {
       "mail"
     );
 
-    // 각 메일을 확인하고 인증 코드 추출
     for (const message of messages) {
       await processOpenAIEmail(message.id);
     }
@@ -257,16 +243,51 @@ async function readOpenAIEmails() {
   }
 }
 
-// Discord 웹훅으로 OpenAI 이메일 전송 (코드 번호만)
-async function sendOpenAIEmailToDiscord(
-  subject,
-  from,
-  date,
-  body,
-  verificationInfo
-) {
+// Discord 웹훅 데이터 생성 함수
+function createDiscordWebhookData(from, date, verificationInfo) {
+  return {
+    embeds: [
+      {
+        title: "🔑 OpenAI 인증 코드",
+        color: 0xff6b35,
+        fields: [
+          {
+            name: "🔢 인증 코드",
+            value: `**${verificationInfo.code}**`,
+            inline: false,
+          },
+          {
+            name: "📧 이메일",
+            value: from,
+            inline: true,
+          },
+          {
+            name: "📅 시간",
+            value: new Date(date).toLocaleString("ko-KR"),
+            inline: true,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+        footer: { text: "OpenAI Email Bot" },
+      },
+    ],
+  };
+}
+
+// Discord 웹훅 전송 함수
+async function sendToDiscord(webhookData) {
+  const response = await fetch(process.env.DISCORD_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(webhookData),
+  });
+
+  return response.ok;
+}
+
+// Discord 웹훅으로 전송
+async function sendOpenAIEmailToDiscord(from, date, verificationInfo) {
   try {
-    // 인증 코드가 있을 때만 Discord로 전송
     if (!verificationInfo.code) {
       logWithTime(
         "   인증 코드가 없어 Discord로 전송하지 않습니다.",
@@ -275,132 +296,117 @@ async function sendOpenAIEmailToDiscord(
       return;
     }
 
-    // Discord 임베드 색상 설정
-    const color = 0xff6b35; // 주황색 (인증 코드 있음)
+    const webhookData = createDiscordWebhookData(from, date, verificationInfo);
+    const success = await sendToDiscord(webhookData);
 
-    const webhookData = {
-      embeds: [
-        {
-          title: "🔑 OpenAI 인증 코드",
-          color: color,
-          fields: [
-            {
-              name: "🔢 인증 코드",
-              value: `**${verificationInfo.code}**`,
-              inline: false,
-            },
-            {
-              name: "📧 이메일",
-              value: from,
-              inline: true,
-            },
-            {
-              name: "📅 시간",
-              value: new Date(date).toLocaleString("ko-KR"),
-              inline: true,
-            },
-          ],
-          timestamp: new Date().toISOString(),
-          footer: {
-            text: "OpenAI Email Bot",
-          },
-        },
-      ],
-    };
-
-    const response = await fetch(process.env.DISCORD_WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(webhookData),
-    });
-
-    if (response.ok) {
+    if (success) {
       logWithTime(
         `   인증 코드 "${verificationInfo.code}"을 Discord로 전송했습니다.`,
         "success"
       );
     } else {
-      logWithTime(`   Discord 웹훅 전송 실패: ${response.statusText}`, "error");
+      logWithTime(`   Discord 웹훅 전송 실패`, "error");
     }
   } catch (error) {
     logWithTime(`   Discord 전송 오류: ${error.message}`, "error");
   }
 }
 
+// 이메일 헤더 추출 함수
+function extractEmailHeaders(headers) {
+  return {
+    subject: headers.find((h) => h.name === "Subject")?.value || "제목 없음",
+    from: headers.find((h) => h.name === "From")?.value || "발신자 없음",
+    date: headers.find((h) => h.name === "Date")?.value || "날짜 없음",
+  };
+}
+
+// 이메일 본문 추출 함수
+function extractEmailBody(payload) {
+  let body = "";
+
+  if (payload.body) {
+    body = payload.body.data;
+  } else if (payload.parts) {
+    const textPart = payload.parts.find(
+      (part) => part.mimeType === "text/plain"
+    );
+    if (textPart && textPart.body) body = textPart.body.data;
+  }
+
+  if (body) body = Buffer.from(body, "base64").toString("utf-8");
+
+  return body;
+}
+
+// 이메일 읽음 처리 함수
+async function markEmailAsRead(messageId) {
+  try {
+    await gmail.users.messages.modify({
+      userId: "me",
+      id: messageId,
+      requestBody: { removeLabelIds: ["UNREAD"] },
+    });
+    logWithTime(`   Gmail에서 읽음으로 표시했습니다.`, "success");
+  } catch (modifyError) {
+    logWithTime(`   Gmail 읽음 처리 실패: ${modifyError.message}`, "error");
+  }
+}
+
 // OpenAI 이메일 처리 함수
 async function processOpenAIEmail(messageId) {
   try {
-    // 메일 상세 정보 가져오기
     const message = await gmail.users.messages.get({
       userId: "me",
       id: messageId,
     });
 
-    const headers = message.data.payload.headers;
-    const subject =
-      headers.find((h) => h.name === "Subject")?.value || "제목 없음";
-    const from = headers.find((h) => h.name === "From")?.value || "발신자 없음";
-    const date = headers.find((h) => h.name === "Date")?.value || "날짜 없음";
-
-    // 메일 본문 추출
-    let body = "";
-    if (message.data.payload.body) {
-      body = message.data.payload.body.data;
-    } else if (message.data.payload.parts) {
-      const textPart = message.data.payload.parts.find(
-        (part) => part.mimeType === "text/plain"
-      );
-      if (textPart && textPart.body) {
-        body = textPart.body.data;
-      }
-    }
-
-    // Base64 디코딩
-    if (body) {
-      body = Buffer.from(body, "base64").toString("utf-8");
-    }
-
-    // OpenAI 인증 코드 추출
-    const verificationInfo = extractOpenAIVerificationCode(subject, body);
+    const headers = extractEmailHeaders(message.data.payload.headers);
+    const body = extractEmailBody(message.data.payload);
+    const verificationInfo = extractOpenAIVerificationCode(
+      headers.subject,
+      body
+    );
 
     if (verificationInfo) {
-      logWithTime(`새로운 OpenAI 이메일 발견: ${subject}`, "mail");
-      logWithTime(`   발신자: ${from}`, "info");
+      logWithTime(`새로운 OpenAI 이메일 발견: ${headers.subject}`, "mail");
+      logWithTime(`   발신자: ${headers.from}`, "info");
       logWithTime(
         `   인증 코드: ${verificationInfo.code || "코드 없음"}`,
         "info"
       );
 
-      // 인증 코드가 있을 때만 Discord로 전송
       if (verificationInfo.code) {
         await sendOpenAIEmailToDiscord(
-          subject,
-          from,
-          date,
-          body,
+          headers.from,
+          headers.date,
           verificationInfo
         );
       }
 
-      // 메일을 읽음으로 표시 (Gmail에서 읽음 처리)
-      try {
-        await gmail.users.messages.modify({
-          userId: "me",
-          id: messageId,
-          requestBody: {
-            removeLabelIds: ["UNREAD"],
-          },
-        });
-        logWithTime(`   Gmail에서 읽음으로 표시했습니다.`, "success");
-      } catch (modifyError) {
-        logWithTime(`   Gmail 읽음 처리 실패: ${modifyError.message}`, "error");
-      }
+      await markEmailAsRead(messageId);
     }
   } catch (error) {
     logWithTime(`OpenAI 이메일 처리 오류: ${error.message}`, "error");
   }
+}
+
+// 서버 상태 확인 함수
+function getServerStatus() {
+  const isConfigured = gmail !== null;
+
+  return {
+    status: isConfigured ? "running" : "setup_required",
+    message: isConfigured
+      ? "OpenAI 이메일 인증 코드 봇이 실행 중입니다."
+      : "OAuth2 설정이 필요합니다. 터미널에서 설정을 진행하세요.",
+    configuration: {
+      oauth2: isConfigured ? "configured" : "not_configured",
+      discord_webhook: process.env.DISCORD_WEBHOOK_URL
+        ? "configured"
+        : "not_configured",
+    },
+  };
 }
 
 // Express 서버 설정
@@ -408,37 +414,209 @@ app.use(express.json());
 
 // 상태 확인 엔드포인트
 app.get("/", (req, res) => {
-  const isConfigured = gmail !== null;
+  res.json(getServerStatus());
+});
 
-  res.json({
-    status: isConfigured ? "running" : "setup_required",
-    message: isConfigured
-      ? "OpenAI 이메일 인증 코드 봇이 실행 중입니다."
-      : "OAuth2 설정이 필요합니다. 터미널에서 설정을 진행하세요.",
-    nextCheck: isConfigured ? "10초 후" : "설정 완료 후",
-    features: [
-      "OpenAI 이메일 자동 감지",
-      "인증 코드 자동 추출",
-      "Discord 웹훅 전송",
-      "10초마다 자동 확인",
-    ],
-    configuration: {
-      oauth2: isConfigured ? "configured" : "not_configured",
-      discord_webhook: process.env.DISCORD_WEBHOOK_URL
-        ? "configured"
-        : "not_configured",
-    },
-  });
+// OAuth2 인증 페이지
+app.get("/auth", (req, res) => {
+  const isConfigured = gmail !== null;
+  const codeFromQuery = req.query.code;
+
+  if (isConfigured) {
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>OAuth2 설정 완료</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+          .success { color: #28a745; background: #d4edda; padding: 15px; border-radius: 5px; }
+        </style>
+      </head>
+      <body>
+        <h1>✅ OAuth2 설정 완료</h1>
+        <div class="success">
+          <h2>Gmail API가 이미 설정되어 있습니다!</h2>
+          <p>서버가 정상적으로 실행 중입니다.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  // URL 쿼리에서 코드가 있으면 자동으로 처리
+  if (codeFromQuery) {
+    logWithTime(
+      `URL 쿼리에서 인증 코드를 받았습니다: ${codeFromQuery}`,
+      "info"
+    );
+    processAuthCode(codeFromQuery, res);
+    return;
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Gmail OAuth2 인증</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #f8f9fa; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .step { background: #e9ecef; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #007bff; }
+        .form-group { margin: 20px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+        button { background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .success, .error { padding: 15px; border-radius: 5px; display: none; }
+        .success { color: #28a745; background: #d4edda; }
+        .error { color: #721c24; background: #f8d7da; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🔐 Gmail OAuth2 인증</h1>
+        
+        <div class="step">
+          <h3>📋 단계별 안내</h3>
+          <ol>
+            <li>터미널에서 제공된 URL을 브라우저에서 열기</li>
+            <li>Google 계정으로 로그인하고 권한 허용</li>
+            <li>인증 코드를 복사</li>
+            <li>아래 입력창에 인증 코드 입력</li>
+            <li>제출 버튼 클릭</li>
+          </ol>
+        </div>
+
+        <form id="authForm">
+          <div class="form-group">
+            <label for="authCode">인증 코드:</label>
+            <input type="text" id="authCode" name="authCode" placeholder="4/0AfJohXn..." required>
+          </div>
+          
+          <button type="submit">인증 완료</button>
+        </form>
+
+        <div id="success" class="success">
+          <h3>✅ 인증 성공!</h3>
+          <p>Gmail API 인증이 완료되었습니다.</p>
+          <p>터미널을 확인하여 다음 단계를 진행하세요.</p>
+        </div>
+
+        <div id="error" class="error">
+          <h3>❌ 인증 실패</h3>
+          <p id="errorMessage">인증 코드가 유효하지 않습니다.</p>
+        </div>
+      </div>
+
+      <script>
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const authCode = document.getElementById('authCode').value.trim();
+          
+          if (!authCode) {
+            showError('인증 코드를 입력해주세요.');
+            return;
+          }
+
+          try {
+            const response = await fetch('/auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: authCode })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+              showSuccess();
+              document.getElementById('authForm').style.display = 'none';
+            } else {
+              showError(result.message || '인증에 실패했습니다.');
+            }
+          } catch (error) {
+            showError('서버 연결 오류가 발생했습니다.');
+          }
+        });
+
+        function showSuccess() {
+          document.getElementById('success').style.display = 'block';
+          document.getElementById('error').style.display = 'none';
+        }
+
+        function showError(message) {
+          document.getElementById('errorMessage').textContent = message;
+          document.getElementById('error').style.display = 'block';
+          document.getElementById('success').style.display = 'none';
+        }
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// 인증 코드 처리 함수
+async function processAuthCode(code, res) {
+  try {
+    if (!code) {
+      return res.json({ success: false, message: "인증 코드가 필요합니다." });
+    }
+
+    const envVars = validateEnvironmentVariables();
+    if (!envVars) {
+      return res.json({
+        success: false,
+        message:
+          "OAuth2 설정이 필요합니다. GMAIL_CLIENT_ID와 GMAIL_CLIENT_SECRET을 확인하세요.",
+      });
+    }
+
+    const oauth2Client = createOAuth2Client(
+      envVars.clientId,
+      envVars.clientSecret
+    );
+    const { tokens } = await oauth2Client.getToken(code);
+
+    global.authTokens = tokens;
+    global.authCompleted = true;
+
+    const response = {
+      success: true,
+      message: "인증이 완료되었습니다! 터미널을 확인하세요.",
+    };
+
+    if (res) {
+      res.json(response);
+    }
+
+    return response;
+  } catch (error) {
+    global.authError = error.message;
+    global.authCompleted = true;
+
+    const response = { success: false, message: `인증 실패: ${error.message}` };
+
+    if (res) {
+      res.json(response);
+    }
+
+    return response;
+  }
+}
+
+// OAuth2 인증 코드 처리 (POST)
+app.post("/auth", async (req, res) => {
+  const { code } = req.body;
+  await processAuthCode(code, res);
 });
 
 // OpenAI 이메일 수동 확인 엔드포인트
 app.post("/check-openai", async (req, res) => {
   if (!gmail) {
-    return res
-      .status(400)
-      .json({
-        error: "OAuth2 설정이 필요합니다. 터미널에서 설정을 진행하세요.",
-      });
+    return res.status(400).json({
+      error: "OAuth2 설정이 필요합니다. 터미널에서 설정을 진행하세요.",
+    });
   }
 
   try {
@@ -449,76 +627,16 @@ app.post("/check-openai", async (req, res) => {
   }
 });
 
-// 이메일 검색 엔드포인트
-app.post("/search-emails", async (req, res) => {
-  if (!gmail) {
-    return res
-      .status(400)
-      .json({
-        error: "OAuth2 설정이 필요합니다. 터미널에서 설정을 진행하세요.",
-      });
-  }
-
-  try {
-    const { query } = req.body;
-    if (!query) {
-      return res.status(400).json({ error: "검색어가 필요합니다." });
-    }
-
-    const response = await gmail.users.messages.list({
-      userId: "me",
-      maxResults: 10,
-      q: query,
-    });
-
-    const messages = response.data.messages || [];
-    res.json({
-      message: `${messages.length}개의 이메일을 발견했습니다.`,
-      count: messages.length,
-      query: query,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // 서버 시작
 app.listen(PORT, async () => {
   logWithTime(`OpenAI 이메일 봇이 포트 ${PORT}에서 실행 중입니다.`, "bot");
 
-  // OAuth2 초기화 시도
-  if (initializeOAuth2()) {
-    logWithTime(`OpenAI 이메일을 10초마다 확인합니다.`, "bot");
-    logWithTime(`인증 코드 자동 추출 및 Discord 전송`, "debug");
-    logWithTime(
-      `Discord 웹훅: ${
-        process.env.DISCORD_WEBHOOK_URL ? "설정됨" : "설정되지 않음"
-      }`,
-      "info"
-    );
+  const setupSuccess = await setupOAuth2();
 
-    // 10초마다 OpenAI 이메일 확인 시작
+  if (setupSuccess) {
+    logWithTime(`OAuth2 설정이 완료되었습니다!`, "success");
+    logWithTime(`이제 OpenAI 이메일을 10초마다 확인합니다.`, "bot");
     setInterval(readOpenAIEmails, 10000);
-  } else {
-    logWithTime(`OAuth2 설정이 필요합니다.`, "warning");
-    logWithTime(`터미널에서 OAuth2 설정을 진행합니다...`, "info");
-
-    // 터미널에서 OAuth2 설정 진행
-    const setupSuccess = await setupOAuth2Terminal();
-
-    if (setupSuccess) {
-      logWithTime(`OAuth2 설정이 완료되었습니다!`, "success");
-      logWithTime(`이제 OpenAI 이메일을 10초마다 확인합니다.`, "bot");
-
-      // 10초마다 OpenAI 이메일 확인 시작
-      setInterval(readOpenAIEmails, 10000);
-    } else {
-      logWithTime(`OAuth2 설정에 실패했습니다.`, "error");
-      logWithTime(`.env 파일을 확인하고 서버를 재시작하세요.`, "warning");
-    }
-
-    // readline 인터페이스 닫기
-    rl.close();
   }
 });
 
