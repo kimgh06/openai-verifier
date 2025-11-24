@@ -3,6 +3,7 @@ version: "3.8"
 services:
   openai-email-bot:
     build: .
+    mem_limit: 64m
     container_name: openai-email-bot
     restart: unless-stopped
     ports:
