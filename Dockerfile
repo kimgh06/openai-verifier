@@ -26,5 +26,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
-# 애플리케이션 실행
-CMD ["npm", "start"]
+# 애플리케이션 실행 (npm 오버헤드 제거를 위해 직접 node 실행)
+CMD ["node", "--max-old-space-size=96", "--gc-interval=100", "server.js"]

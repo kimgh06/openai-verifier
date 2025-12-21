@@ -409,8 +409,9 @@ function getServerStatus() {
   };
 }
 
-// Express 서버 설정
-app.use(express.json());
+// Express 서버 설정 (메모리 최적화)
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
 // 상태 확인 엔드포인트
 app.get("/", (req, res) => {

@@ -3,7 +3,7 @@ version: "3.8"
 services:
   openai-email-bot:
     build: .
-    mem_limit: 64m
+    mem_limit: 128m
     container_name: openai-email-bot
     restart: unless-stopped
     ports:
@@ -11,6 +11,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - NODE_OPTIONS=--max-old-space-size=96 --gc-interval=100
     env_file:
       - .env
     volumes:
