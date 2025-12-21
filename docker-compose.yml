@@ -11,7 +11,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - NODE_OPTIONS=--max-old-space-size=96 --gc-interval=100
+      - NODE_OPTIONS=--max-old-space-size=96
     env_file:
       - .env
     volumes:
