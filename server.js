@@ -425,6 +425,48 @@ async function sendRecoveryToDiscord() {
   }
 }
 
+// Discord 봇 시작 알림 전송 함수
+async function sendStartupToDiscord() {
+  try {
+    const webhookData = {
+      embeds: [
+        {
+          title: "봇 시작됨",
+          color: 0x007bff,
+          fields: [
+            {
+              name: "상태",
+              value: "OpenAI 이메일 봇이 가동되었습니다.",
+              inline: false,
+            },
+            {
+              name: "시작 시각",
+              value: new Date().toLocaleString("ko-KR"),
+              inline: true,
+            },
+            {
+              name: "폴링 간격",
+              value: "10초",
+              inline: true,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: "OpenAI Email Bot - Startup" },
+        },
+      ],
+    };
+
+    const success = await sendToDiscord(webhookData);
+    if (success) {
+      logWithTime("봇 시작 알림을 Discord로 전송했습니다.", "success");
+    } else {
+      logWithTime("봇 시작 알림 Discord 전송 실패", "error");
+    }
+  } catch (error) {
+    logWithTime(`봇 시작 알림 전송 중 오류: ${error.message}`, "error");
+  }
+}
+
 // 이메일 헤더 추출 함수
 function extractEmailHeaders(headers) {
   return {
@@ -750,6 +792,7 @@ app.listen(PORT, async () => {
   if (setupSuccess) {
     logWithTime(`OAuth2 설정이 완료되었습니다!`, "success");
     logWithTime(`이제 OpenAI 이메일을 10초마다 확인합니다.`, "bot");
+    await sendStartupToDiscord();
     setInterval(readOpenAIEmails, 10000);
   }
 });
