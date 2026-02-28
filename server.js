@@ -829,6 +829,9 @@ app.post("/check-openai", async (req, res) => {
 app.listen(PORT, async () => {
   logWithTime(`OpenAI 이메일 봇이 포트 ${PORT}에서 실행 중입니다.`, "bot");
 
+  // 서버 시작 즉시 인증 필요 알림 전송
+  await sendAuthRequiredToDiscord();
+
   const setupSuccess = await setupOAuth2();
 
   if (setupSuccess) {
@@ -836,8 +839,6 @@ app.listen(PORT, async () => {
     logWithTime(`이제 OpenAI 이메일을 10초마다 확인합니다.`, "bot");
     await sendStartupToDiscord();
     setInterval(readOpenAIEmails, 10000);
-  } else {
-    await sendAuthRequiredToDiscord();
   }
 });
 
