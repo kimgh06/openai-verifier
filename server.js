@@ -467,6 +467,48 @@ async function sendStartupToDiscord() {
   }
 }
 
+// Discord 인증 필요 알림 전송 함수
+async function sendAuthRequiredToDiscord() {
+  try {
+    const webhookData = {
+      embeds: [
+        {
+          title: "봇 시작됨 - 인증 필요",
+          color: 0xffc107,
+          fields: [
+            {
+              name: "상태",
+              value: "서버가 시작되었지만 OAuth2 토큰 설정이 필요합니다.",
+              inline: false,
+            },
+            {
+              name: "설정 방법",
+              value: `http://localhost:${PORT}/auth 에서 인증을 진행하세요.`,
+              inline: false,
+            },
+            {
+              name: "시작 시각",
+              value: new Date().toLocaleString("ko-KR"),
+              inline: true,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: "OpenAI Email Bot - Auth Required" },
+        },
+      ],
+    };
+
+    const success = await sendToDiscord(webhookData);
+    if (success) {
+      logWithTime("인증 필요 알림을 Discord로 전송했습니다.", "warning");
+    } else {
+      logWithTime("인증 필요 알림 Discord 전송 실패", "error");
+    }
+  } catch (error) {
+    logWithTime(`인증 필요 알림 전송 중 오류: ${error.message}`, "error");
+  }
+}
+
 // 이메일 헤더 추출 함수
 function extractEmailHeaders(headers) {
   return {
@@ -794,6 +836,8 @@ app.listen(PORT, async () => {
     logWithTime(`이제 OpenAI 이메일을 10초마다 확인합니다.`, "bot");
     await sendStartupToDiscord();
     setInterval(readOpenAIEmails, 10000);
+  } else {
+    await sendAuthRequiredToDiscord();
   }
 });
 
