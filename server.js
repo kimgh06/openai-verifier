@@ -9,6 +9,14 @@ const PORT = process.env.PORT || 3000;
 let oauth2Client = null;
 let gmail = null;
 
+// 메일 조회 실패 상태 추적
+let failureState = {
+  isDown: false,
+  lastError: null,
+  failedAt: null,
+  notifiedAt: null,
+};
+
 // 시간이 포함된 로그 함수
 function logWithTime(message, type = "info") {
   const timestamp = new Date().toLocaleString("ko-KR", {
@@ -225,6 +233,13 @@ async function readOpenAIEmails() {
     const response = await searchUnreadOpenAIEmails();
     const messages = response.data.messages;
 
+    // 조회 성공 → 이전에 장애 상태였으면 복구 알림
+    if (failureState.isDown) {
+      logWithTime("메일 조회가 복구되었습니다.", "success");
+      await sendRecoveryToDiscord();
+      failureState = { isDown: false, lastError: null, failedAt: null, notifiedAt: null };
+    }
+
     if (!messages || messages.length === 0) {
       logWithTime("읽지 않은 OpenAI 관련 이메일이 없습니다.", "info");
       return;
@@ -240,6 +255,15 @@ async function readOpenAIEmails() {
     }
   } catch (error) {
     logWithTime(`OpenAI 이메일 읽기 오류: ${error.message}`, "error");
+
+    // 첫 실패 시에만 Discord 알림 전송
+    if (!failureState.isDown) {
+      failureState.isDown = true;
+      failureState.lastError = error.message;
+      failureState.failedAt = new Date();
+      failureState.notifiedAt = new Date();
+      await sendErrorToDiscord(error.message);
+    }
   }
 }
 
@@ -309,6 +333,95 @@ async function sendOpenAIEmailToDiscord(from, date, verificationInfo) {
     }
   } catch (error) {
     logWithTime(`   Discord 전송 오류: ${error.message}`, "error");
+  }
+}
+
+// Discord 에러 알림 전송 함수
+async function sendErrorToDiscord(errorMessage) {
+  try {
+    const webhookData = {
+      embeds: [
+        {
+          title: "메일 조회 실패",
+          color: 0xff0000,
+          fields: [
+            {
+              name: "에러 내용",
+              value: errorMessage,
+              inline: false,
+            },
+            {
+              name: "발생 시각",
+              value: new Date().toLocaleString("ko-KR"),
+              inline: true,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: "OpenAI Email Bot - Error Alert" },
+        },
+      ],
+    };
+
+    const success = await sendToDiscord(webhookData);
+    if (success) {
+      logWithTime("에러 알림을 Discord로 전송했습니다.", "warning");
+    } else {
+      logWithTime("에러 알림 Discord 전송 실패", "error");
+    }
+  } catch (error) {
+    logWithTime(`에러 알림 전송 중 오류: ${error.message}`, "error");
+  }
+}
+
+// Discord 복구 알림 전송 함수
+async function sendRecoveryToDiscord() {
+  try {
+    const downtime = failureState.failedAt
+      ? Math.round((Date.now() - failureState.failedAt.getTime()) / 1000)
+      : 0;
+    const minutes = Math.floor(downtime / 60);
+    const seconds = downtime % 60;
+    const durationText =
+      minutes > 0 ? `${minutes}분 ${seconds}초` : `${seconds}초`;
+
+    const webhookData = {
+      embeds: [
+        {
+          title: "메일 조회 복구",
+          color: 0x28a745,
+          fields: [
+            {
+              name: "장애 시작",
+              value: failureState.failedAt
+                ? failureState.failedAt.toLocaleString("ko-KR")
+                : "알 수 없음",
+              inline: true,
+            },
+            {
+              name: "복구 시각",
+              value: new Date().toLocaleString("ko-KR"),
+              inline: true,
+            },
+            {
+              name: "다운타임",
+              value: durationText,
+              inline: true,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: "OpenAI Email Bot - Recovery" },
+        },
+      ],
+    };
+
+    const success = await sendToDiscord(webhookData);
+    if (success) {
+      logWithTime("복구 알림을 Discord로 전송했습니다.", "success");
+    } else {
+      logWithTime("복구 알림 Discord 전송 실패", "error");
+    }
+  } catch (error) {
+    logWithTime(`복구 알림 전송 중 오류: ${error.message}`, "error");
   }
 }
 
