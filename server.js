@@ -17,6 +17,11 @@ let failureState = {
   notifiedAt: null,
 };
 
+// 폴링 간격 설정 (ms)
+const POLL_INTERVAL_DEFAULT = 60000; // 기본 60초
+const POLL_INTERVAL_BACKOFF = 300000; // rate limit 시 5분
+let currentPollInterval = POLL_INTERVAL_DEFAULT;
+
 // 시간이 포함된 로그 함수
 function logWithTime(message, type = "info") {
   const timestamp = new Date().toLocaleString("ko-KR", {
@@ -238,6 +243,8 @@ async function readOpenAIEmails() {
       logWithTime("메일 조회가 복구되었습니다.", "success");
       await sendRecoveryToDiscord();
       failureState = { isDown: false, lastError: null, failedAt: null, notifiedAt: null };
+      currentPollInterval = POLL_INTERVAL_DEFAULT;
+      logWithTime(`폴링 간격을 ${POLL_INTERVAL_DEFAULT / 1000}초로 복원합니다.`, "info");
     }
 
     if (!messages || messages.length === 0) {
@@ -255,6 +262,12 @@ async function readOpenAIEmails() {
     }
   } catch (error) {
     logWithTime(`OpenAI 이메일 읽기 오류: ${error.message}`, "error");
+
+    // Rate limit 감지 시 백오프
+    if (error.message && error.message.includes("rate limit")) {
+      currentPollInterval = POLL_INTERVAL_BACKOFF;
+      logWithTime(`Rate limit 감지 - 폴링 간격을 ${POLL_INTERVAL_BACKOFF / 1000}초로 늘립니다.`, "warning");
+    }
 
     // 첫 실패 시에만 Discord 알림 전송
     if (!failureState.isDown) {
@@ -446,7 +459,7 @@ async function sendStartupToDiscord() {
             },
             {
               name: "폴링 간격",
-              value: "10초",
+              value: "60초",
               inline: true,
             },
           ],
@@ -836,9 +849,15 @@ app.listen(PORT, async () => {
 
   if (setupSuccess) {
     logWithTime(`OAuth2 설정이 완료되었습니다!`, "success");
-    logWithTime(`이제 OpenAI 이메일을 10초마다 확인합니다.`, "bot");
+    logWithTime(`이제 OpenAI 이메일을 ${POLL_INTERVAL_DEFAULT / 1000}초마다 확인합니다.`, "bot");
     await sendStartupToDiscord();
-    setInterval(readOpenAIEmails, 10000);
+
+    // 동적 간격 폴링 (rate limit 시 백오프 적용)
+    const pollLoop = async () => {
+      await readOpenAIEmails();
+      setTimeout(pollLoop, currentPollInterval);
+    };
+    setTimeout(pollLoop, currentPollInterval);
   }
 });
 
