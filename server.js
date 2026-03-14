@@ -17,6 +17,9 @@ let failureState = {
   notifiedAt: null,
 };
 
+// 폴링 타이머 참조 (재시작용)
+let pollTimer = null;
+
 // 폴링 간격 설정 (ms)
 const POLL_INTERVAL_DEFAULT = 60000; // 기본 60초
 const POLL_INTERVAL_BACKOFF = 300000; // rate limit 시 5분
@@ -262,6 +265,19 @@ async function readOpenAIEmails() {
     }
   } catch (error) {
     logWithTime(`OpenAI 이메일 읽기 오류: ${error.message}`, "error");
+
+    // invalid_grant 감지 시 재인증 모드 진입
+    if (error.message && error.message.includes("invalid_grant")) {
+      logWithTime("OAuth2 토큰이 만료되었습니다. 재인증 모드로 전환합니다.", "error");
+      gmail = null;
+      oauth2Client = null;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      await sendAuthRequiredToDiscord();
+      return;
+    }
 
     // Rate limit 감지 시 백오프
     if (error.message && error.message.includes("rate limit")) {
@@ -767,6 +783,20 @@ app.get("/auth", (req, res) => {
   `);
 });
 
+// 폴링 시작 함수
+function startPolling() {
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+  }
+  currentPollInterval = POLL_INTERVAL_DEFAULT;
+  const pollLoop = async () => {
+    await readOpenAIEmails();
+    pollTimer = setTimeout(pollLoop, currentPollInterval);
+  };
+  pollTimer = setTimeout(pollLoop, currentPollInterval);
+  logWithTime(`OpenAI 이메일을 ${POLL_INTERVAL_DEFAULT / 1000}초마다 확인합니다.`, "bot");
+}
+
 // 인증 코드 처리 함수
 async function processAuthCode(code, res) {
   try {
@@ -783,18 +813,34 @@ async function processAuthCode(code, res) {
       });
     }
 
-    const oauth2Client = createOAuth2Client(
+    const newOAuth2Client = createOAuth2Client(
       envVars.clientId,
       envVars.clientSecret
     );
-    const { tokens } = await oauth2Client.getToken(code);
+    const { tokens } = await newOAuth2Client.getToken(code);
+
+    // Gmail 클라이언트 재설정
+    oauth2Client = newOAuth2Client;
+    oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
+    gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+    // 연결 테스트
+    const profile = await gmail.users.getProfile({ userId: "me" });
+    logWithTime(`Gmail 재인증 성공! 이메일: ${profile.data.emailAddress}`, "success");
+
+    // 장애 상태 초기화
+    failureState = { isDown: false, lastError: null, failedAt: null, notifiedAt: null };
+
+    // 폴링 재시작
+    startPolling();
+    await sendStartupToDiscord();
 
     global.authTokens = tokens;
     global.authCompleted = true;
 
     const response = {
       success: true,
-      message: "인증이 완료되었습니다! 터미널을 확인하세요.",
+      message: "인증이 완료되었습니다! 메일 확인이 재개됩니다.",
     };
 
     if (res) {
@@ -849,15 +895,8 @@ app.listen(PORT, async () => {
 
   if (setupSuccess) {
     logWithTime(`OAuth2 설정이 완료되었습니다!`, "success");
-    logWithTime(`이제 OpenAI 이메일을 ${POLL_INTERVAL_DEFAULT / 1000}초마다 확인합니다.`, "bot");
     await sendStartupToDiscord();
-
-    // 동적 간격 폴링 (rate limit 시 백오프 적용)
-    const pollLoop = async () => {
-      await readOpenAIEmails();
-      setTimeout(pollLoop, currentPollInterval);
-    };
-    setTimeout(pollLoop, currentPollInterval);
+    startPolling();
   }
 });
 
